@@ -66,13 +66,17 @@ class Controller(object):
         return self.read_reg(self.ZOOM_STEP_REG)
 
     def set_zoom(self,zoom: float):
-        self.write_reg(self.ZOOM_STEP_REG,zoom*self.max_zoom)
+        if zoom < 0 or zoom > 1:
+            raise ValueError("Zoom must be in (0,1)")
+        self.write_reg(self.ZOOM_STEP_REG,int((1-zoom)*self.max_zoom))
 
     def get_focus(self):
         return self.read_reg(self.FOCUS_STEP_REG)
 
     def set_focus(self,focus: float):
-        self.write_reg(self.FOCUS_STEP_REG,focus*self.max_focus)
+        if focus < 0 or focus > 1:
+            raise ValueError("Focus must be in (0,1)")
+        self.write_reg(self.FOCUS_STEP_REG,int(focus*self.max_focus))
 
     def get_zoom_speed(self):
         return self.read_reg(self.ZOOM_SPEED_REG)
@@ -92,7 +96,7 @@ class Controller(object):
         return self.read_reg(self.SERVO_TILT_REG)
 
     def set_tilt(self,angle):
-        if angle < 0 or angle > 180:
+        if angle < 15 or angle > 170:
             raise ValueError("Angle must be in (0,180))")
         self.write_reg(self.SERVO_TILT_REG,angle)
 
