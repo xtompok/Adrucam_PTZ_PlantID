@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-from autofocus import sobel, laplacian, laplacian2
+from autofocus_math import sobel, laplacian, laplacian2
 from control import Controller
 from capture import gstreamer_pipeline
 import time
