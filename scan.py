@@ -8,7 +8,7 @@ ctl = Controller(1)
 
 ctl.print_status()
 
-for tilt in range(0,180,2*STEP):
+for tilt in range(15,165,2*STEP):
     ctl.set_tilt(tilt)
     time.sleep(0.01)
     for pan in range(0,181,STEP):
