@@ -35,10 +35,14 @@ def gstreamer_pipeline(
         )
     )
 
+def open_camera():
+    cam = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
+    return cam
+
 
 def main():
     #cap = cv2.VideoCapture(" nvarguscamerasrc aelock=true wbmode=0  exposuretimerange='130000 130000'  ! 'video/x-raw(memory:NVMM), width=4032, height=3040, framerate=10/1' ! nvvidconv ! videocrop left=1500 right=1500 top=1000 bottom=1000 ! nvvidconv  ! video/x-raw, format=I420, appsink max-buffers=1 drop=true", cv2.CAP_GSTREAMER)
-    cap = cv2.VideoCapture(gstreamer_pipeline(flip_method=0), cv2.CAP_GSTREAMER)
+    cap = open_camera()
     print(gstreamer_pipeline(flip_method=0))
     #cap = cv2.VideoCapture("nvarguscamerasrc aelock=true wbmode=0 ! video/x-raw(memory:NVMM), width=4032, height=3040, format=(string)NV12, framerate=10/1 ! nvvidconv flip_method=0 ! videocrop left=1500 right=1500 top=1000 bottom=1000 ! video/x-raw format=(string)BGRx ! videoconvert ! video/x-raw, format=(string)BGR ! appsink", cv2.CAP_GSTREAMER)
 
