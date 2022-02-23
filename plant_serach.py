@@ -3,9 +3,10 @@
 import cv2
 from capture import open_camera
 from control import Controller
-from autofocus import autofocus 
+from autofocus import autofocus,fine_focus,detailed_autofocus 
 from s3 import load_key 
 import boto3
+from botocore.exceptions import ClientError
 import time
 from pathlib import Path
 import click
@@ -62,18 +63,21 @@ def append_to_log(ctl,timestamp,prefix,laplacian,plant_res):
             'focus': ctl.get_focus(),
             'laplacian': laplacian,
             'pid_id': plant_res['id'],
-            'pid_plant_name': plant_res['suggestions'][0]['plant_name'],
-            'pid_probability': plant_res['suggestions'][0]['probability'],
             'pid_is_plant_probability': plant_res['is_plant_probability'],
             'pid_is_healthy_probability': plant_res['health_assessment']['is_healthy_probability'],
-            'pid_diseases_0_entity_id': plant_res['health_assessment']['diseases'][0]['entity_id'],
-            'pid_diseases_0_probability': plant_res['health_assessment']['diseases'][0]['probability'],
-            'pid_diseases_0_name': plant_res['health_assessment']['diseases'][0]['name'],
-            'pid_diseases_1_entity_id': plant_res['health_assessment']['diseases'][1]['entity_id'],
-            'pid_diseases_1_probability': plant_res['health_assessment']['diseases'][1]['probability'],
-            'pid_diseases_1_name': plant_res['health_assessment']['diseases'][1]['name'],
-
             }
+    if plant_res['suggestions']:
+        data['pid_plant_name'] = plant_res['suggestions'][0]['plant_name']
+        data['pid_probability'] = plant_res['suggestions'][0]['probability']
+    if plant_res['health_assessment']['diseases']:
+        data['pid_diseases_0_entity_id'] = plant_res['health_assessment']['diseases'][0]['entity_id']
+        data['pid_diseases_0_probability'] = plant_res['health_assessment']['diseases'][0]['probability']
+        data['pid_diseases_0_name'] =  plant_res['health_assessment']['diseases'][0]['name']
+    if len(plant_res['health_assessment']['diseases']) > 1:
+        data['pid_diseases_1_entity_id'] = plant_res['health_assessment']['diseases'][1]['entity_id']
+        data['pid_diseases_1_probability'] = plant_res['health_assessment']['diseases'][1]['probability']
+        data['pid_diseases_1_name'] =  plant_res['health_assessment']['diseases'][1]['name']
+
     with open(LOG_CSV_FILENAME,'a') as f:
         writer = csv.DictWriter(f,fieldnames = LOG_FIELDS)
         writer.writerow(data)
@@ -91,7 +95,14 @@ def append_to_plants(ctl,timestamp,prefix):
         writer = csv.DictWriter(f,fieldnames = PLANT_FIELDS)
         writer.writerow(data)
 
-
+def csv_init():
+    with open(LOG_CSV_FILENAME,'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(LOG_FIELDS)
+        
+    with open(PLANT_CSV_FILENAME,'w') as f:
+        writer = csv.writer(f)
+        writer.writerow(PLANT_FIELDS)
 
 
 def encode_file(file_name):
@@ -137,15 +148,32 @@ def identify_plant(filename,api_key):
 
 
 
-def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img):
+def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img, last_focus):
     ctl.set_tilt(tilt)
     time.sleep(0.01)
     ctl.set_pan(pan)
     time.sleep(0.01)
     ctl.set_zoom(zoom)
     time.sleep(0.01)
-
-    focus, laplacian = autofocus(ctl,cam)
+    
+    laplacian = None
+    # We got focus from previous frame, try to search around it
+    if last_focus:
+        focus,laplacian = fine_focus(ctl,cam,last_focus,0.2)
+        if laplacian:
+            print(f'Fast focusing: focus:{focus:.3f}, laplac: {laplacian:.3f}')
+        else: 
+            print("Fast focusing failed")
+    
+    # If previous fail or we don't have focus hint, make full focusing
+    if not last_focus or not laplacian or laplacian < 50:
+        focus, laplacian = autofocus(ctl,cam)
+        if laplacian:
+            print(f'Full focusing: focus:{focus:.3f}, laplac: {laplacian:.3f}')
+        else:
+            print("Full focusing failed")
+#            focus,laplacian = detailed_autofocus(ctl,cam) 
+#            print(f"Detailed: {focus},{laplacian}")
     
     for _ in range(IMG_MAX_RETRY):
         ret,frame = cam.read()
@@ -159,7 +187,10 @@ def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img):
 
     cv2.imwrite(filepath.as_posix(),frame)
     
-    s3cli.upload_file(filepath.as_posix(),BUCKET,f'{PREFIX}/{filepath.name}')
+    try: 
+        s3cli.upload_file(filepath.as_posix(),BUCKET,f'{PREFIX}/{filepath.name}')
+    except ClientError:
+        print('Failed to upload {filepath} to S3')
     
     result = identify_plant(filepath,api_key)
     #pp.pprint(result)
@@ -167,14 +198,21 @@ def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img):
 
     if result['is_plant']:
         append_to_plants(ctl,timestamp,PREFIX)
-        s3cli.upload_file(PLANT_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{PLANT_CSV_FILENAME.name}')
+        try:
+            s3cli.upload_file(PLANT_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{PLANT_CSV_FILENAME.name}')
+        except ClientError:
+            print('Failed to upload {PLANT_CSV_FILENAME} to S3')
 
     
     append_to_log(ctl,timestamp,PREFIX,laplacian,result)
-    s3cli.upload_file(LOG_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{LOG_CSV_FILENAME.name}')
+    try:
+        s3cli.upload_file(LOG_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{LOG_CSV_FILENAME.name}')
+    except ClientError:
+        print('Failed to upload {LOG_CSV_FILENAME} to S3')
     if delete_img:
         filepath.unlink()
 
+    return focus
 
 
 
@@ -183,7 +221,8 @@ def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img):
 @click.option('--s3key', help='Path to the file with S3 key', required=True, type=click.File('r'))
 @click.option('--prefix', help='Prefix for captured data')
 @click.option('--delete-img/--no-delete-img','-d','delete_img', help='Delete images after upload?')
-def main(apikey,s3key,prefix,delete_img):
+@click.option('--init',is_flag=True, confirmation_prompt=True, help='Truncate and reinit CSV files')
+def main(apikey,s3key,prefix,delete_img,init):
     # Process arguments
     if prefix is not None:
         PREFIX = prefix
@@ -193,6 +232,9 @@ def main(apikey,s3key,prefix,delete_img):
     access,secret = load_key(s3key)
     s3cli = boto3.client('s3',aws_access_key_id = access, aws_secret_access_key = secret)
 
+    if init:
+        csv_init()
+
     # Prepare camera and controller
     ctl = Controller(1)
     ctl.print_status()
@@ -201,17 +243,19 @@ def main(apikey,s3key,prefix,delete_img):
 
     ctl.set_zoom(ZOOM)
 
+    last_focus = None
+
     # Scan
     for tilt in range(MIN_TILT,MAX_TILT,2*STEP):
         for pan in range(MIN_PAN,MAX_PAN,STEP):
             print(f"Pan: {pan}, tilt: {tilt}")
-            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img)
+            last_focus = capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img,last_focus)
 
         tilt += STEP
         time.sleep(0.01)
         for pan in range(MAX_PAN,MIN_PAN,-STEP):
             print(f"Pan: {pan}, tilt: {tilt}")
-            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img)
+            last_focus = capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img,last_focus)
 
 
 if __name__ == '__main__':
