@@ -19,10 +19,11 @@ def main():
         ctl.set_zoom(z)
         ctl.set_focus(f)
         ctl.waiting_for_free()
-        time.sleep(0.01)
-        for _ in range(12):
-            ret,frame = cam.read()
-        for _ in range(5):
+        time.sleep(0.1)
+#        for _ in range(12):
+#            ret,frame = cam.read()
+        print("-----")
+        for _ in range(2):
             ret,frame = cam.read()
             cv2.imshow("Camera", frame)
             print(f"Z: {z}, F: {f}, sobel: {sobel(frame)}, laplacian: {laplacian(frame)}, laplacian2: {laplacian2(frame)}")

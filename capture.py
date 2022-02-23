@@ -25,7 +25,7 @@ def gstreamer_pipeline(
         "videocrop left=%d right=%d top=%d bottom=%d !"
         "video/x-raw format=(string)BGRx ! "
         "videoconvert ! "
-        "video/x-raw, format=(string)BGR ! appsink"
+        "video/x-raw, format=(string)BGR ! appsink max-buffers=1 drop=true"
         % (
             capture_width,
             capture_height,

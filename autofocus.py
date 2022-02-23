@@ -120,26 +120,34 @@ def fine_focus(ctl, cam, bestcroase,width,steps=10):
 def get_frame_at_focus(ctl,cam,focus):
         ctl.set_focus(focus)
         ctl.waiting_for_free()
-        for _ in range(12):
+        time.sleep(0.1)
+        for _ in range(2):
             ret,frame = cam.read()
         
         return cam.read()
 
-def croase_focus(ctl,cam):
+def croase_focus(ctl,cam,steps):
         croase = []
-        for f in range(CROASE_STEPS):
-            ret,frame = get_frame_at_focus(ctl,cam,f/10) 
+        for f in range(steps):
+            ret,frame = get_frame_at_focus(ctl,cam,f/steps) 
             croase.append(laplacian2(frame))
         
         print(croase)
-        return find_peak(croase,CROASE_STEPS)
+        return find_peak(croase,steps)
 
 
 def autofocus(ctl,cam):
-    croase,val = croase_focus(ctl,cam)
+    croase,val = croase_focus(ctl,cam,CROASE_STEPS)
     if croase is None:
         return None,None
     fine,val = fine_focus(ctl,cam,croase,2/CROASE_STEPS)
+    return fine,val
+
+def detailed_autofocus(ctl,cam):
+    croase,val = croase_focus(ctl,cam,CROASE_STEPS*3)
+    if croase is None:
+        return None,None
+    fine,val = fine_focus(ctl,cam,croase,2/(CROASE_STEPS*3))
     return fine,val
         
 
