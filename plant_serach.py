@@ -20,7 +20,7 @@ MIN_TILT = 15
 MAX_TILT = 165
 MIN_PAN = 0
 MAX_PAN = 180
-ZOOM = 0.7
+ZOOM = 0.5
 
 IMG_MAX_RETRY = 5
 
@@ -28,6 +28,7 @@ PREFIX = 'test'
 BUCKET = 'plantid-origami'
 
 STORAGE_DIR = Path('/tmp/ram')
+IMG_DIR = Path('/tmp/ram')
 LOG_CSV_FILENAME = STORAGE_DIR / Path('results.csv')
 LOG_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus','laplacian',
 'pid_id',
@@ -41,6 +42,9 @@ LOG_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus','laplacian',
 'pid_diseases_1_entity_id',
 'pid_diseases_1_probability',
 'pid_diseases_1_name',)
+
+PLANT_CSV_FILENAME = STORAGE_DIR / Path('plants.csv')
+PLANT_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus')
 
 pp = pprint.PrettyPrinter(width=200)
 
@@ -73,6 +77,20 @@ def append_to_log(ctl,timestamp,prefix,laplacian,plant_res):
     with open(LOG_CSV_FILENAME,'a') as f:
         writer = csv.DictWriter(f,fieldnames = LOG_FIELDS)
         writer.writerow(data)
+
+def append_to_plants(ctl,timestamp,prefix):
+    data = {
+            'timestamp': timestamp,
+            'prefix': prefix,
+            'pan': ctl.get_pan(),
+            'tilt': ctl.get_tilt(),
+            'zoom': ctl.get_zoom(),
+            'focus': ctl.get_focus(),
+            }
+    with open(PLANT_CSV_FILENAME,'a') as f:
+        writer = csv.DictWriter(f,fieldnames = PLANT_FIELDS)
+        writer.writerow(data)
+
 
 
 
@@ -119,7 +137,7 @@ def identify_plant(filename,api_key):
 
 
 
-def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli):
+def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli, delete_img):
     ctl.set_tilt(tilt)
     time.sleep(0.01)
     ctl.set_pan(pan)
@@ -137,18 +155,25 @@ def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli):
     else:
         print("Failed to capture image")
 
-    filepath = STORAGE_DIR / generate_filename(ctl, timestamp, PREFIX)
+    filepath = IMG_DIR / generate_filename(ctl, timestamp, PREFIX)
 
     cv2.imwrite(filepath.as_posix(),frame)
     
     s3cli.upload_file(filepath.as_posix(),BUCKET,f'{PREFIX}/{filepath.name}')
     
     result = identify_plant(filepath,api_key)
-    pp.pprint(result)
+    #pp.pprint(result)
     print(f"Is plant: {result['is_plant']} with probability {result['is_plant_probability']}")
+
+    if result['is_plant']:
+        append_to_plants(ctl,timestamp,PREFIX)
+        s3cli.upload_file(PLANT_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{PLANT_CSV_FILENAME.name}')
+
     
     append_to_log(ctl,timestamp,PREFIX,laplacian,result)
     s3cli.upload_file(LOG_CSV_FILENAME.as_posix(),BUCKET,f'{PREFIX}/{LOG_CSV_FILENAME.name}')
+    if delete_img:
+        filepath.unlink()
 
 
 
@@ -157,7 +182,8 @@ def capture(ctl, cam, pan, tilt, zoom, api_key, s3cli):
 @click.option('--apikey', help='Path to the file with API key', required=True, type=click.File('r'))
 @click.option('--s3key', help='Path to the file with S3 key', required=True, type=click.File('r'))
 @click.option('--prefix', help='Prefix for captured data')
-def main(apikey,s3key,prefix):
+@click.option('--delete-img/--no-delete-img','-d','delete_img', help='Delete images after upload?')
+def main(apikey,s3key,prefix,delete_img):
     # Process arguments
     if prefix is not None:
         PREFIX = prefix
@@ -179,13 +205,13 @@ def main(apikey,s3key,prefix):
     for tilt in range(MIN_TILT,MAX_TILT,2*STEP):
         for pan in range(MIN_PAN,MAX_PAN,STEP):
             print(f"Pan: {pan}, tilt: {tilt}")
-            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli)
+            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img)
 
         tilt += STEP
         time.sleep(0.01)
         for pan in range(MAX_PAN,MIN_PAN,-STEP):
             print(f"Pan: {pan}, tilt: {tilt}")
-            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli)
+            capture(ctl,cam,pan,tilt,ZOOM,apikey,s3cli,delete_img)
 
 
 if __name__ == '__main__':
