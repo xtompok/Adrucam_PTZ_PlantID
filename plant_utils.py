@@ -6,6 +6,7 @@ from s3 import load_key
 import boto3
 from botocore.exceptions import ClientError
 from autofocus import autofocus,fine_focus,detailed_autofocus 
+from enum import Enum, auto
 import time
 
 LOG_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus','laplacian',
@@ -23,8 +24,12 @@ LOG_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus','laplacian',
 
 PLANT_FIELDS = ('timestamp','prefix','pan','tilt','zoom','focus')
 
+class WorkingMode(Enum):
+    SEARCH = auto()
+    SNAPSHOT = auto()
+
 class Config(object):
-    def __init__(self,prefix,img_dir,bucket,log_filename,plant_filename,api_key,s3cli,delete_img,img_max_retry=5):
+    def __init__(self,prefix,img_dir,bucket,log_filename,plant_filename,api_key,s3cli,delete_img,img_max_retry=5,mode=WorkingMode.SNAPSHOT):
         self.prefix = prefix
         self.img_dir = img_dir
         self.bucket = bucket
@@ -34,6 +39,7 @@ class Config(object):
         self.api_key = api_key
         self.s3cli = s3cli
         self.delete_img = delete_img
+        self.mode = mode
 
 def generate_filename(ctl,timestamp,prefix):
     name = f'p{prefix}_t{timestamp}_P{ctl.get_pan()}_T{ctl.get_tilt()}_Z{int(ctl.get_zoom()*100)}_F{int(ctl.get_focus()*10000)}.jpg'
@@ -142,7 +148,7 @@ def process_img(cfg,ctl,timestamp,frame,focus,laplacian):
     #pp.pprint(result)
     print(f"Is plant: {result['is_plant']} with probability {result['is_plant_probability']}")
 
-    if result['is_plant']:
+    if result['is_plant'] and cfg.mode == WorkingMode.SEARCH:
         append_to_plants(cfg,ctl,timestamp)
         try:
             cfg.s3cli.upload_file(cfg.plant_filename.as_posix(),cfg.bucket,f'{cfg.prefix}/{cfg.plant_filename.name}')

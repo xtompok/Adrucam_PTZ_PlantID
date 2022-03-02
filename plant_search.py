@@ -9,7 +9,7 @@ import click
 import pprint
 import boto3
 from s3 import load_key
-from plant_utils import csv_init, capture, process_img, Config
+from plant_utils import csv_init, capture, process_img, Config, WorkingMode
 
 DELAY = 0.5
 
@@ -26,10 +26,10 @@ PLANT_CSV_FILENAME = STORAGE_DIR / Path('plants.csv')
 
 STEP = 5
 MIN_TILT = 15
-MAX_TILT = 165
+MAX_TILT = 140
 MIN_PAN = 0
 MAX_PAN = 180
-ZOOM = 0
+ZOOM = 0.9
 
 pp = pprint.PrettyPrinter(width=200)
 
@@ -54,7 +54,7 @@ def main(apikey,s3key,prefix,delete_img,init):
 
     # Create config object
     cfg = Config(prefix=prefix, img_dir=IMG_DIR, bucket=BUCKET, log_filename=LOG_CSV_FILENAME,
-            plant_filename=PLANT_CSV_FILENAME, api_key=apikey, s3cli=s3cli, delete_img=delete_img)
+            plant_filename=PLANT_CSV_FILENAME, api_key=apikey, s3cli=s3cli, delete_img=delete_img, mode=WorkingMode.SEARCH)
 
     if init:
         csv_init(cfg)
@@ -77,6 +77,8 @@ def main(apikey,s3key,prefix,delete_img,init):
             process_img(cfg,ctl,timestamp,frame,last_focus,laplacian)
 
         tilt += STEP
+        if tilt > MAX_TILT:
+            break
         time.sleep(0.01)
         for pan in range(MAX_PAN,MIN_PAN,-STEP):
             print(f"Pan: {pan}, tilt: {tilt}")
