@@ -77,7 +77,7 @@ def append_to_plants(cfg,ctl,timestamp):
             'zoom': ctl.get_zoom(),
             'focus': ctl.get_focus(),
             }
-    with open(filename,'a') as f:
+    with open(cfg.plant_filename,'a') as f:
         writer = csv.DictWriter(f,fieldnames = PLANT_FIELDS)
         writer.writerow(data)
 
