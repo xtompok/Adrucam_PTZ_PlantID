@@ -58,7 +58,7 @@ def main(apikey,s3key,prefix,delete_img):
 
     for plant in plants:
         print("Capturing {plant}")
-        timestamp,frame,last_focus,laplacian = capture(cfg,ctl,cam,plant['pan'],plant['tilt'],plant['zoom'],plant['focus'])
+        timestamp,frame,last_focus,laplacian = capture(cfg,ctl,cam,int(plant['pan']),int(plant['tilt']),float(plant['zoom']),float(plant['focus']))
         process_img(cfg,ctl,timestamp,frame,last_focus,laplacian)
 
 
