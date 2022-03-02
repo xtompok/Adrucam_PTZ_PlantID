@@ -33,6 +33,10 @@ class Controller(object):
 
     BUSY_REG = 0x04
 
+    
+    MIN_FOCUS = 1000
+    MIN_ZOOM = 3500
+
     def __init__(self, bus, addr=0x0C):
         self.bus = smbus.SMBus(bus)
         self.addr = addr
@@ -63,20 +67,24 @@ class Controller(object):
         self.bus.write_word_data(self.addr,reg,self._bswap(val))
 
     def get_zoom(self):
-        return self.read_reg(self.ZOOM_STEP_REG)
+        return 1-(self.read_reg(self.ZOOM_STEP_REG)-self.MIN_ZOOM)/(self.max_zoom-self.MIN_ZOOM)
 
     def set_zoom(self,zoom: float):
         if zoom < 0 or zoom > 1:
             raise ValueError("Zoom must be in (0,1)")
-        self.write_reg(self.ZOOM_STEP_REG,int((1-zoom)*self.max_zoom))
+        self.write_reg(self.ZOOM_STEP_REG,int((1-zoom)*(self.max_zoom-self.MIN_ZOOM)+self.MIN_ZOOM))
 
     def get_focus(self):
-        return self.read_reg(self.FOCUS_STEP_REG)
+        return (self.read_reg(self.FOCUS_STEP_REG)-self.MIN_FOCUS)/(self.max_focus-self.MIN_FOCUS)
 
     def set_focus(self,focus: float):
-        if focus < 0 or focus > 1:
-            raise ValueError("Focus must be in (0,1)")
-        self.write_reg(self.FOCUS_STEP_REG,int(focus*self.max_focus))
+        if focus < 0:
+            print(f"Focus {focus} adjusting to 0")
+            focus = 0
+        if focus > 1:
+            print(f"Focus {focus} adjusting to 1")
+            focus = 1
+        self.write_reg(self.FOCUS_STEP_REG,int(focus*(self.max_focus-self.MIN_FOCUS)+self.MIN_FOCUS))
 
     def get_zoom_speed(self):
         return self.read_reg(self.ZOOM_SPEED_REG)
